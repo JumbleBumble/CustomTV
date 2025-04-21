@@ -14,6 +14,7 @@ using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Text;
 using MelonLoader.Utils;
+using ScheduleOne.EntityFramework;
 
 [assembly: MelonInfo(typeof(CustomTV.CustomTV), CustomTV.BuildInfo.Name, CustomTV.BuildInfo.Version, CustomTV.BuildInfo.Author, CustomTV.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
@@ -552,7 +553,15 @@ namespace CustomTV
 
             tvInterfaces.Clear();
             passiveVideoPlayers.Clear();
-            tvInterfaces = GameObject.FindObjectsOfType<Transform>().Where(t => t.name == "TVInterface").ToList();
+            tvInterfaces = GameObject.FindObjectsOfType<Transform>()
+               .Where(t => t.name == "TVInterface" || t.name == "MetalSign_Built(Clone)" || t.name == "WoodlSign_Built(Clone)")
+               .Where(t =>
+               {
+                   if (t.name == "TVInterface") return true;
+                   var labelledSurfaceItem = t.GetComponent<LabelledSurfaceItem>();
+                   return labelledSurfaceItem != null && labelledSurfaceItem.Message?.ToLower() == "customtv";
+               })
+               .ToList();
 
             sharedRenderTexture = new RenderTexture(1920, 1080, 0);
 
@@ -615,7 +624,7 @@ namespace CustomTV
             {
                 bool isMaster = (i == 0);
                 if (tvInterfaces[i] == null) continue;
-                var timeChild = tvInterfaces[i].Find("Time");
+                var timeChild = tvInterfaces[i].Find("Time") ?? tvInterfaces[i].Find("Model")?.Find("Name");
                 MelonCoroutines.Start(SetupPassiveDisplay(timeChild, isMaster));
             }
 
@@ -680,7 +689,14 @@ namespace CustomTV
                 renderer.material = cleanMat;
 
                 timeChild.localPosition = Vector3.zero;
-                timeChild.localScale = new Vector3(680f, 400f, 0f);
+                if (timeChild.name == "Name")
+                {
+                    timeChild.localScale = new Vector3(3f, 2.2f, 0f);
+                    timeChild.localPosition = new Vector3(0f, 0f, 0.6f);
+                } else
+                {
+                    timeChild.localScale = new Vector3(680f, 400f, 0f);
+                }
             }
             catch (Exception ex)
             {
