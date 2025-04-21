@@ -261,6 +261,14 @@ namespace CustomTV
             {
                 string tvFolder = Path.Combine(MelonEnvironment.ModsDirectory, "TV");
                 videoFiles = Directory.GetFiles(tvFolder, "*.mp4", SearchOption.TopDirectoryOnly).ToList();
+                if (Config.Shuffle)
+                {
+                    videoFiles.Shuffle(rng);
+                }
+                else
+                {
+                    videoFiles = [.. videoFiles.OrderBy(f => f, new SmartEpisodeComparer())];
+                }
 
 #if MELONLOADER_IL2CPP
                 isIL2CPP = true;
@@ -574,7 +582,6 @@ namespace CustomTV
                 {
                     if (newVideoFiles.Count != videoFiles.Count)
                     {
-                        newVideoFiles.Shuffle(rng);
                         videoFiles = newVideoFiles;
                         if (Config.Shuffle)
                         {
@@ -582,7 +589,7 @@ namespace CustomTV
                         }
                         else
                         {
-                            videoFiles = newVideoFiles.OrderBy(f => f, new SmartEpisodeComparer()).ToList();
+                            videoFiles = [.. newVideoFiles.OrderBy(f => f, new SmartEpisodeComparer())];
                         }
                     }
                 }
