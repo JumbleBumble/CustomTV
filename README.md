@@ -120,14 +120,14 @@ You can configure the following YouTube-related settings in the *MelonPreference
 **Q: Can I use .webm or other formats?**  
 A: No, Unity's VideoPlayer works best with `.mp4` (H.264/AAC).
 
-**Q: The screen is black!**  
-A: Make sure your video has the **mp4** extension and uses a supported codec.
+**Q: The screen is black/frozen!**  
+A: Make sure your video has the mp4 extension and uses a supported codec. Also sometimes happens to TVs during initial load if the TV is far away from the player during game start, to fix just pick the TV up and place it back down then skip video.
 
 **Q: Keybinds aren't working.**  
 A: Be sure to press both ctrl and shift before the keybind, for example ctrl-shift-] to skip video.
 
 **Q: Audio isn't synced!**  
-A: Sometimes audio gets desynced during initial load, to fix this simply just skip the video then go back to it using the key binds and it'll be re-synced.
+A: Sometimes audio gets desynced during initial load or when the TV/Sign gets reloaded after being unloaded by the game, to fix this simply just seek the video forward and back using the arrow key keybinds.
 
 ## 🎉 Credits
 
