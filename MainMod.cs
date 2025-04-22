@@ -1,20 +1,12 @@
+using Il2CppScheduleOne.EntityFramework;
 using MelonLoader;
-using System.Collections;
-using UnityEngine;
-using UnityEngine.Video;
-using System.IO;
-using System.Linq;
-using System.Collections.Generic;
-using System;
-using System.Diagnostics;
-using System.Threading.Tasks;
-using UnityEngine.UI;
-using UnityEngine.EventSystems;
-using System.Net.Http;
-using System.Text.RegularExpressions;
-using System.Text;
 using MelonLoader.Utils;
-using ScheduleOne.EntityFramework;
+using System.Collections;
+using System.Diagnostics;
+using System.Text;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.Video;
 
 [assembly: MelonInfo(typeof(CustomTV.CustomTV), CustomTV.BuildInfo.Name, CustomTV.BuildInfo.Version, CustomTV.BuildInfo.Author, CustomTV.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
@@ -28,7 +20,7 @@ namespace CustomTV
         public const string Description = "Lets you play your own MP4 videos on the TV.";
         public const string Author = "Jumble & Bars";
         public const string Company = null;
-        public const string Version = "1.4";
+        public const string Version = "1.6.1";
         public const string DownloadLink = "www.nexusmods.com/schedule1/mods/603";
     }
 
@@ -526,13 +518,19 @@ namespace CustomTV
                 {
                     var tvInterface = tvInterfaces[i];
                     if (tvInterface == null) continue;
-                    var timeChild = tvInterfaces[i].Find("Time");
+                    var timeChild = tvInterfaces[i].Find("Time") ?? tvInterfaces[i].Find("Model")?.Find("Name");
                     if (timeChild == null) continue;
+                    bool needsUpdate = false;
                     var renderer = timeChild.GetComponent<MeshRenderer>();
-                    if (renderer == null || renderer.material == null) continue;
-
-                    Material mat = renderer.material;
-                    bool needsUpdate = (mat.shader == null || mat.shader.name != "UI/Default" || mat.mainTexture != sharedRenderTexture);
+                    if (renderer == null || renderer.material == null)
+                    {
+                        needsUpdate = true;
+                    } else
+                    {
+                        Material mat = renderer.material;
+                        needsUpdate = (mat.shader == null || mat.shader.name != "UI/Default" || mat.mainTexture != sharedRenderTexture);
+                    }
+                    
                     if (needsUpdate)
                     {
                         MelonCoroutines.Start(SetupPassiveDisplay(timeChild, i == 0));
@@ -903,6 +901,7 @@ namespace CustomTV
                     yield break;
                 }
             }
+            yield return null;
 
             try
             {
