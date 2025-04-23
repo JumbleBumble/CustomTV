@@ -17,10 +17,10 @@ namespace CustomTV
     public static class BuildInfo
     {
         public const string Name = "CustomTV";
-        public const string Description = "Lets you play your own MP4 videos on the TV.";
+        public const string Description = "Lets you play your own MP4 videos on the TV and Signs.";
         public const string Author = "Jumble & Bars";
         public const string Company = null;
-        public const string Version = "1.6.1";
+        public const string Version = "1.6.2";
         public const string DownloadLink = "www.nexusmods.com/schedule1/mods/603";
     }
 
@@ -40,6 +40,7 @@ namespace CustomTV
         private static MelonPreferences_Entry<int> maxCachedYoutubeVideosEntry;
         private static MelonPreferences_Entry<bool> deleteYoutubeVideosOnExitEntry;
         private static MelonPreferences_Entry<bool> useFirefoxCookiesEntry;
+        private static MelonPreferences_Entry<String> signSizeEntry;
 
         public static KeyCode PauseKey => pauseKeyEntry?.Value ?? KeyCode.Minus;
         public static KeyCode ResumeKey => resumeKeyEntry?.Value ?? KeyCode.Equals;
@@ -54,6 +55,7 @@ namespace CustomTV
         public static int MaxCachedYoutubeVideos => maxCachedYoutubeVideosEntry?.Value ?? 25;
         public static bool DeleteYoutubeVideosOnExit => deleteYoutubeVideosOnExitEntry?.Value ?? true;
         public static bool UseFirefoxCookies => useFirefoxCookiesEntry?.Value ?? false;
+        public static Vector3 SignSize => ParseVector3(signSizeEntry.Value);
 
         private static readonly string modsFolderPath = MelonEnvironment.ModsDirectory;
         private static readonly string tvFolderPath = Path.Combine(modsFolderPath, "TV");
@@ -95,6 +97,7 @@ namespace CustomTV
             maxCachedYoutubeVideosEntry = configCategory.CreateEntry("MaxCachedYoutubeVideos", 25, "Max cached YouTube videos");
             deleteYoutubeVideosOnExitEntry = configCategory.CreateEntry("DeleteYoutubeVideosOnExit", true, "Delete YouTube videos on exit");
             useFirefoxCookiesEntry = configCategory.CreateEntry("UseFirefoxCookies", false, "Use Firefox cookies for age-restricted videos");
+            signSizeEntry = configCategory.CreateEntry("signSize", "(3, 2.2, 0)", "Vector3 Sign Size");
 
             string ytDlpExePath = Path.Combine(YtDlpFolderPath, "yt-dlp.exe");
             if (!File.Exists(ytDlpExePath))
@@ -102,6 +105,27 @@ namespace CustomTV
                 MelonLogger.Warning("yt-dlp.exe not found. YouTube functionality won't work.");
                 MelonLogger.Msg($"Please download yt-dlp.exe manually from https://github.com/yt-dlp/yt-dlp/releases and place it in: {YtDlpFolderPath}");
             }
+        }
+
+        private static Vector3 ParseVector3(string vectorString)
+        {
+            try
+            {
+                vectorString = vectorString.Trim('(', ')');
+                string[] components = vectorString.Split(',');
+                if (components.Length == 3 &&
+                    float.TryParse(components[0], out float x) &&
+                    float.TryParse(components[1], out float y) &&
+                    float.TryParse(components[2], out float z))
+                {
+                    return new Vector3(x, y, z);
+                }
+            }
+            catch
+            {
+                MelonLogger.Warning($"Failed to parse Vector3 from string: {vectorString}. Using default value.");
+            }
+            return new Vector3(3f, 2.2f, 0f);
         }
     }
 
@@ -114,30 +138,27 @@ namespace CustomTV
         private static bool settingUpdate = false;
         private static double savedPlaybackTime = 0;
         private static string videoFilePath = Path.Combine(MelonEnvironment.ModsDirectory, "TV", "video.mp4");
-        private static List<string> videoFiles = new();
+        private static List<string> videoFiles = [];
         private static int currentVideoIndex = 0;
         private static readonly System.Random rng = new();
         private static readonly Action<VideoPlayer> videoEndHandler = OnVideoEnd;
-        private static readonly List<VideoPlayer> passiveVideoPlayers = new();
-        private static List<Transform> tvInterfaces = new();
+        private static readonly List<VideoPlayer> passiveVideoPlayers = [];
+        private static List<Transform> tvInterfaces = [];
 
         private static bool isYoutubeMode = false;
         private static bool isDownloadingYoutube = false;
-        private static string currentYoutubeUrl = "";
-        private static Dictionary<string, string> youtubeCache = new Dictionary<string, string>();
-        private static Queue<string> ytCacheQueue = new Queue<string>();
+        private static Dictionary<string, string> youtubeCache = [];
+        private static Queue<string> ytCacheQueue = new();
 
         private static bool showDownloadProgress = false;
         private static volatile float downloadProgress = 0f;
         private static volatile string downloadStatus = "";
         private static GameObject downloadProgressUI;
-        private static readonly object downloadLock = new object();
+        private static readonly object downloadLock = new();
 
-        private static Queue<string> playlistVideoQueue = new Queue<string>();
+        private static Queue<string> playlistVideoQueue = new();
         private static bool isProcessingPlaylist = false;
-        private static string currentPlaylistUrl = "";
 
-        private static bool firefoxCookiesEnabled = true;
         private static bool warnedAboutCookies = false;
 
         private static void VideoEndEventHandler(VideoPlayer source)
@@ -147,7 +168,6 @@ namespace CustomTV
 
         private static VideoPlayer.EventHandler videoEndDelegate;
         private static VideoPlayer.ErrorEventHandler errorEventHandler;
-        private static bool isIL2CPP = false;
 
         private static void AddVideoEndHandler(VideoPlayer vp)
         {
@@ -253,7 +273,7 @@ namespace CustomTV
             try
             {
                 string tvFolder = Path.Combine(MelonEnvironment.ModsDirectory, "TV");
-                videoFiles = Directory.GetFiles(tvFolder, "*.mp4", SearchOption.TopDirectoryOnly).ToList();
+                videoFiles = [.. Directory.GetFiles(tvFolder, "*.mp4", SearchOption.TopDirectoryOnly)];
                 if (Config.Shuffle)
                 {
                     videoFiles.Shuffle(rng);
@@ -264,7 +284,6 @@ namespace CustomTV
                 }
 
 #if MELONLOADER_IL2CPP
-                isIL2CPP = true;
                 videoEndDelegate = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.EventHandler>(
                     new Action<VideoPlayer>(VideoEndEventHandler));
                 errorEventHandler = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.ErrorEventHandler>(
@@ -551,15 +570,14 @@ namespace CustomTV
 
             tvInterfaces.Clear();
             passiveVideoPlayers.Clear();
-            tvInterfaces = GameObject.FindObjectsOfType<Transform>()
+            tvInterfaces = [.. GameObject.FindObjectsOfType<Transform>()
                .Where(t => t.name == "TVInterface" || t.name == "MetalSign_Built(Clone)" || t.name == "WoodlSign_Built(Clone)")
                .Where(t =>
                {
                    if (t.name == "TVInterface") return true;
                    var labelledSurfaceItem = t.GetComponent<LabelledSurfaceItem>();
                    return labelledSurfaceItem != null && labelledSurfaceItem.Message?.ToLower() == "customtv";
-               })
-               .ToList();
+               })];
 
             sharedRenderTexture = new RenderTexture(1920, 1080, 0);
 
@@ -654,18 +672,8 @@ namespace CustomTV
 
             try
             {
-                MeshRenderer renderer = timeChild.GetComponent<MeshRenderer>();
-                if (renderer == null)
-                {
-                    renderer = timeChild.gameObject.AddComponent<MeshRenderer>();
-                }
-
-                MeshFilter meshFilter = timeChild.GetComponent<MeshFilter>();
-                if (meshFilter == null)
-                {
-                    meshFilter = timeChild.gameObject.AddComponent<MeshFilter>();
-                }
-
+                MeshRenderer renderer = timeChild.GetComponent<MeshRenderer>() ?? timeChild.gameObject.AddComponent<MeshRenderer>();
+                MeshFilter meshFilter = timeChild.GetComponent<MeshFilter>() ?? timeChild.gameObject.AddComponent<MeshFilter>();
                 meshFilter.mesh = CreateQuadMesh();
 
                 Shader unlitShader = Shader.Find("UI/Default");
@@ -680,7 +688,7 @@ namespace CustomTV
                     }
                 }
 
-                Material cleanMat = new Material(unlitShader)
+                Material cleanMat = new(unlitShader)
                 {
                     mainTexture = sharedRenderTexture
                 };
@@ -689,7 +697,7 @@ namespace CustomTV
                 timeChild.localPosition = Vector3.zero;
                 if (timeChild.name == "Name")
                 {
-                    timeChild.localScale = new Vector3(3f, 2.2f, 0f);
+                    timeChild.localScale = Config.SignSize;
                     timeChild.localPosition = new Vector3(0f, 0f, 0.6f);
                 } else
                 {
@@ -703,9 +711,8 @@ namespace CustomTV
                 yield break;
             }
 
-            VideoPlayer vp = null;
-            AudioSource audioSrc = null;
-
+            VideoPlayer vp;
+            AudioSource audioSrc;
             try
             {
                 vp = timeChild.GetComponent<VideoPlayer>();
@@ -777,12 +784,10 @@ namespace CustomTV
             }
             else
             {
-                FileInfo fileInfo = new FileInfo(normalizedVideoPath);
+                FileInfo fileInfo = new(normalizedVideoPath);
                 MelonLogger.Msg($"Video file exists, size: {fileInfo.Length / (1024.0 * 1024.0):F2} MB");
             }
 
-            bool prepared = false;
-            bool triedFileProtocol = false;
             float prepareStartTime;
             float elapsed;
             const float maxPrepareTime = 15f;
@@ -822,7 +827,7 @@ namespace CustomTV
                 if ((int)elapsed % 3 == 0 && dotCount < (int)elapsed / 3)
                 {
                     dotCount = (int)elapsed / 3;
-                    string dots = new string('.', (dotCount % 4) + 1);
+                    string dots = new('.', (dotCount % 4) + 1);
                     MelonLogger.Msg($"Preparing video{dots} ({elapsed:F1}s / {maxPrepareTime:F1}s)");
                 }
                 if (elapsed > maxPrepareTime)
@@ -836,14 +841,12 @@ namespace CustomTV
             if (vp.isPrepared)
             {
                 MelonLogger.Msg($"Video prepared successfully with plain path");
-                prepared = true;
             }
             else
             {
                 MelonLogger.Warning(timeoutErrorMsg);
                 MelonLogger.Msg("Trying again with file:// protocol as fallback");
                 passiveVideoPlayers.Remove(vp);
-                triedFileProtocol = true;
                 GameObject.Destroy(vp);
                 yield return null;
                 vp = timeChild.gameObject.AddComponent<VideoPlayer>();
@@ -880,7 +883,7 @@ namespace CustomTV
                     if ((int)elapsed % 3 == 0 && dotCount < (int)elapsed / 3)
                     {
                         dotCount = (int)elapsed / 3;
-                        string dots = new string('.', (dotCount % 4) + 1);
+                        string dots = new('.', (dotCount % 4) + 1);
                         MelonLogger.Msg($"Preparing video (file://){dots} ({elapsed:F1}s / {maxPrepareTime:F1}s)");
                     }
                     if (elapsed > maxPrepareTime)
@@ -893,7 +896,6 @@ namespace CustomTV
                 if (vp.isPrepared)
                 {
                     MelonLogger.Msg($"Video prepared successfully with file:// protocol");
-                    prepared = true;
                 }
                 else
                 {
@@ -1011,7 +1013,6 @@ namespace CustomTV
             }
 
             isDownloadingYoutube = true;
-            currentYoutubeUrl = url;
 
             if (youtubeCache.TryGetValue(url, out string cachedPath) && File.Exists(cachedPath))
             {
@@ -1119,7 +1120,7 @@ namespace CustomTV
                     canAccessFile = true;
                 }
 
-                FileInfo fileInfo = new FileInfo(normalizedPath);
+                FileInfo fileInfo = new(normalizedPath);
                 MelonLogger.Msg($"Video file size: {fileInfo.Length / 1024.0 / 1024.0:F2} MB");
             }
             catch (Exception ex)
@@ -1164,7 +1165,7 @@ namespace CustomTV
             {
                 MelonLogger.Msg("No TV interfaces found, looking for them now...");
                 tvInterfaces.Clear();
-                tvInterfaces = GameObject.FindObjectsOfType<Transform>().Where(t => t.name == "TVInterface").ToList();
+                tvInterfaces = [.. GameObject.FindObjectsOfType<Transform>().Where(t => t.name == "TVInterface")];
 
                 if (tvInterfaces.Count == 0)
                 {
@@ -1371,9 +1372,7 @@ namespace CustomTV
                 yield break;
             }
 
-            string[] files = Directory.GetFiles(Config.YoutubeTempFolder, "*.mp4")
-                .OrderByDescending(f => new FileInfo(f).CreationTime)
-                .ToArray();
+            string[] files = [.. Directory.GetFiles(Config.YoutubeTempFolder, "*.mp4").OrderByDescending(f => new FileInfo(f).CreationTime)];
 
             if (files.Length > Config.MaxCachedYoutubeVideos)
             {
@@ -1424,7 +1423,7 @@ namespace CustomTV
                     return clipboardText;
                 }
 
-                TextEditor te = new TextEditor();
+                TextEditor te = new();
                 te.Paste();
                 return te.text;
             }
@@ -1455,7 +1454,7 @@ namespace CustomTV
 
             downloadProgressUI.AddComponent<GraphicRaycaster>();
 
-            GameObject panel = new GameObject("Panel");
+            GameObject panel = new("Panel");
             panel.transform.SetParent(downloadProgressUI.transform, false);
 
             RectTransform panelRect = panel.AddComponent<RectTransform>();
@@ -1468,7 +1467,7 @@ namespace CustomTV
             Image panelImage = panel.AddComponent<Image>();
             panelImage.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
 
-            GameObject titleObj = new GameObject("TitleText");
+            GameObject titleObj = new("TitleText");
             titleObj.transform.SetParent(panel.transform, false);
 
             RectTransform titleRect = titleObj.AddComponent<RectTransform>();
@@ -1485,7 +1484,7 @@ namespace CustomTV
             titleText.alignment = TextAnchor.MiddleCenter;
             titleText.color = Color.white;
 
-            GameObject progressBgObj = new GameObject("ProgressBarBg");
+            GameObject progressBgObj = new("ProgressBarBg");
             progressBgObj.transform.SetParent(panel.transform, false);
 
             RectTransform progressBgRect = progressBgObj.AddComponent<RectTransform>();
@@ -1498,7 +1497,7 @@ namespace CustomTV
             Image progressBgImage = progressBgObj.AddComponent<Image>();
             progressBgImage.color = new Color(0.2f, 0.2f, 0.2f, 1);
 
-            GameObject progressFillObj = new GameObject("ProgressBarFill");
+            GameObject progressFillObj = new("ProgressBarFill");
             progressFillObj.transform.SetParent(progressBgObj.transform, false);
 
             RectTransform progressFillRect = progressFillObj.AddComponent<RectTransform>();
@@ -1510,7 +1509,7 @@ namespace CustomTV
             Image progressFillImage = progressFillObj.AddComponent<Image>();
             progressFillImage.color = new Color(0.2f, 0.7f, 0.2f, 1);
 
-            GameObject statusObj = new GameObject("StatusText");
+            GameObject statusObj = new("StatusText");
             statusObj.transform.SetParent(panel.transform, false);
 
             RectTransform statusRect = statusObj.AddComponent<RectTransform>();
@@ -1594,18 +1593,11 @@ namespace CustomTV
             }
         }
 
-        private class DownloadResult
+        private class DownloadResult(string filePath = null, bool isAgeRestricted = false)
         {
-            public string FilePath { get; set; }
-            public bool IsAgeRestricted { get; set; }
-            public bool Success { get; set; }
-
-            public DownloadResult(string filePath = null, bool isAgeRestricted = false)
-            {
-                FilePath = filePath;
-                IsAgeRestricted = isAgeRestricted;
-                Success = !string.IsNullOrEmpty(filePath) && File.Exists(filePath);
-            }
+            public string FilePath { get; set; } = filePath;
+            public bool IsAgeRestricted { get; set; } = isAgeRestricted;
+            public bool Success { get; set; } = !string.IsNullOrEmpty(filePath) && File.Exists(filePath);
         }
 
         private static IEnumerator ProcessYoutubePlaylist(string playlistUrl, bool clearExistingQueue = true)
@@ -1617,8 +1609,6 @@ namespace CustomTV
             }
 
             isProcessingPlaylist = true;
-            currentPlaylistUrl = playlistUrl;
-
             if (clearExistingQueue)
             {
                 playlistVideoQueue.Clear();
@@ -1642,68 +1632,67 @@ namespace CustomTV
 
             yield return CreatePlaylistProgressUI("Extracting videos from playlist...");
 
-            List<string> videoUrls = new List<string>();
+            List<string> videoUrls = [];
             bool extractionSuccess = false;
 
             Task extractionTask = Task.Run(() => {
                 try
                 {
-                    using (Process process = new Process())
+                    using Process process = new();
+                    process.StartInfo.FileName = ytDlpExePath;
+                    process.StartInfo.Arguments = $"--flat-playlist --get-id --get-title \"{playlistUrl}\"";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.RedirectStandardError = true;
+
+                    StringBuilder outputBuilder = new();
+
+                    process.OutputDataReceived += (sender, args) =>
                     {
-                        process.StartInfo.FileName = ytDlpExePath;
-                        process.StartInfo.Arguments = $"--flat-playlist --get-id --get-title \"{playlistUrl}\"";
-                        process.StartInfo.UseShellExecute = false;
-                        process.StartInfo.CreateNoWindow = true;
-                        process.StartInfo.RedirectStandardOutput = true;
-                        process.StartInfo.RedirectStandardError = true;
-
-                        StringBuilder outputBuilder = new StringBuilder();
-
-                        process.OutputDataReceived += (sender, args) => {
-                            if (args.Data != null)
+                        if (args.Data != null)
+                        {
+                            lock (outputBuilder)
                             {
-                                lock (outputBuilder)
+                                outputBuilder.AppendLine(args.Data);
+                            }
+                        }
+                    };
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+
+                    bool exited = process.WaitForExit(120000);
+
+                    if (!exited)
+                    {
+                        process.Kill();
+                        MelonLogger.Error("Playlist extraction timeout after 2 minutes");
+                    }
+                    else if (process.ExitCode != 0)
+                    {
+                        MelonLogger.Error($"Failed to extract playlist with exit code {process.ExitCode}");
+                    }
+                    else
+                    {
+                        string[] lines = outputBuilder.ToString().Split('\n');
+                        for (int i = 0; i < lines.Length - 1; i += 2)
+                        {
+                            string title = lines[i].Trim();
+                            string id = i + 1 < lines.Length ? lines[i + 1].Trim() : "";
+
+                            if (!string.IsNullOrEmpty(id))
+                            {
+                                string videoUrl = $"https://www.youtube.com/watch?v={id}";
+                                lock (videoUrls)
                                 {
-                                    outputBuilder.AppendLine(args.Data);
+                                    videoUrls.Add(videoUrl);
+                                    MelonLogger.Msg($"Found video: {title} ({videoUrl})");
                                 }
                             }
-                        };
-
-                        process.Start();
-                        process.BeginOutputReadLine();
-
-                        bool exited = process.WaitForExit(120000);
-
-                        if (!exited)
-                        {
-                            process.Kill();
-                            MelonLogger.Error("Playlist extraction timeout after 2 minutes");
                         }
-                        else if (process.ExitCode != 0)
-                        {
-                            MelonLogger.Error($"Failed to extract playlist with exit code {process.ExitCode}");
-                        }
-                        else
-                        {
-                            string[] lines = outputBuilder.ToString().Split('\n');
-                            for (int i = 0; i < lines.Length - 1; i += 2)
-                            {
-                                string title = lines[i].Trim();
-                                string id = i + 1 < lines.Length ? lines[i + 1].Trim() : "";
 
-                                if (!string.IsNullOrEmpty(id))
-                                {
-                                    string videoUrl = $"https://www.youtube.com/watch?v={id}";
-                                    lock (videoUrls)
-                                    {
-                                        videoUrls.Add(videoUrl);
-                                        MelonLogger.Msg($"Found video: {title} ({videoUrl})");
-                                    }
-                                }
-                            }
-
-                            extractionSuccess = true;
-                        }
+                        extractionSuccess = true;
                     }
                 }
                 catch (Exception ex)
@@ -1716,7 +1705,7 @@ namespace CustomTV
             while (!extractionTask.IsCompleted)
             {
                 dotCount = (dotCount + 1) % 4;
-                string dots = new string('.', dotCount + 1);
+                string dots = new('.', dotCount + 1);
                 UpdatePlaylistProgressUI($"Extracting videos{dots}");
                 yield return new WaitForSeconds(0.5f);
             }
@@ -1819,12 +1808,12 @@ namespace CustomTV
                         MelonLogger.Msg($"Added first video to queue ({playlistVideoQueue.Count} videos in queue)");
                     }
 
-                    List<string> remainingVideos = new List<string>(videoUrls);
+                    List<string> remainingVideos = [.. videoUrls];
                     remainingVideos.RemoveAt(0);
 
                     if (remainingVideos.Count > 0)
                     {
-                        MelonCoroutines.Start(DownloadRemainingPlaylistVideos(remainingVideos, ytDlpExePath));
+                        MelonCoroutines.Start(DownloadRemainingPlaylistVideos(remainingVideos));
                     }
 
                     if (shouldStartPlaying)
@@ -1879,12 +1868,12 @@ namespace CustomTV
                 Task downloadTask = Task.Run(() => {
                     try
                     {
-                        using (Process process = new Process())
+                        using (Process process = new())
                         {
                             process.StartInfo.FileName = Path.Combine(Config.YtDlpFolderPath, "yt-dlp.exe");
                             string safeOutputPath = Path.GetFullPath(tempOutputPath).Replace('\\', '/');
 
-                            StringBuilder args = new StringBuilder();
+                            StringBuilder args = new();
                             args.Append("--newline ");
 
                             if (withCookies)
@@ -2019,7 +2008,7 @@ namespace CustomTV
                                     MelonLogger.Msg($"Download completed for video {currentIndex}/{totalVideos}");
                                     downloadSuccess = true;
 
-                                    FileInfo fileInfo = new FileInfo(tempOutputPath);
+                                    FileInfo fileInfo = new(tempOutputPath);
                                     if (!fileInfo.Exists || fileInfo.Length == 0)
                                     {
                                         MelonLogger.Error($"Download reported success but file is empty or missing: {tempOutputPath}");
@@ -2169,7 +2158,7 @@ namespace CustomTV
                 yield break;
             }
 
-            FileInfo fileInfo = new FileInfo(tempOutputPath);
+            FileInfo fileInfo = new(tempOutputPath);
             if (fileInfo.Length < 10240)
             {
                 MelonLogger.Error($"Downloaded file is too small ({fileInfo.Length} bytes): {tempOutputPath}");
@@ -2214,14 +2203,14 @@ namespace CustomTV
             onComplete?.Invoke(new DownloadResult(tempOutputPath, isAgeRestricted));
         }
 
-        private static IEnumerator DownloadRemainingPlaylistVideos(List<string> videoUrls, string ytDlpExePath)
+        private static IEnumerator DownloadRemainingPlaylistVideos(List<string> videoUrls)
         {
             MelonLogger.Msg($"Starting background download of {videoUrls.Count} remaining videos...");
             UpdatePlaylistProgressUI($"Downloading {videoUrls.Count} remaining videos in background...");
 
-            List<string> downloadedPaths = new List<string>();
-            List<string> failedVideos = new List<string>();
-            List<string> ageRestrictedVideos = new List<string>();
+            List<string> downloadedPaths = [];
+            List<string> failedVideos = [];
+            List<string> ageRestrictedVideos = [];
 
             int startIndex = 2;
 
@@ -2337,33 +2326,6 @@ namespace CustomTV
             MelonLogger.Msg($"{playlistVideoQueue.Count} downloaded videos remaining in queue");
         }
 
-        private static GameObject playlistProgressDisplay;
-        private static Text playlistProgressText;
-
-        private static IEnumerator CreatePlaylistProgressDisplay(int totalVideos)
-        {
-            yield break;
-        }
-
-        private static void UpdatePlaylistProgressUI(int remainingVideos)
-        {
-            MelonLogger.Msg($"Playlist: {remainingVideos} videos remaining");
-        }
-
-        private static void UpdatePlaylistProgressUIText(string message)
-        {
-            MelonLogger.Msg(message);
-        }
-
-        private static void DestroyPlaylistProgressDisplay()
-        {
-            if (playlistProgressDisplay != null)
-            {
-                GameObject.Destroy(playlistProgressDisplay);
-                playlistProgressDisplay = null;
-            }
-        }
-
         private static IEnumerator CreatePlaylistProgressUI(string message)
         {
             if (downloadProgressUI != null)
@@ -2384,7 +2346,7 @@ namespace CustomTV
 
             downloadProgressUI.AddComponent<GraphicRaycaster>();
 
-            GameObject panel = new GameObject("Panel");
+            GameObject panel = new("Panel");
             panel.transform.SetParent(downloadProgressUI.transform, false);
 
             RectTransform panelRect = panel.AddComponent<RectTransform>();
@@ -2397,7 +2359,7 @@ namespace CustomTV
             Image panelImage = panel.AddComponent<Image>();
             panelImage.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
 
-            GameObject statusObj = new GameObject("StatusText");
+            GameObject statusObj = new("StatusText");
             statusObj.transform.SetParent(panel.transform, false);
 
             RectTransform statusRect = statusObj.AddComponent<RectTransform>();
@@ -2462,9 +2424,7 @@ namespace CustomTV
             {
                 n--;
                 int k = rng.Next(n + 1);
-                T value = list[k];
-                list[k] = list[n];
-                list[n] = value;
+                (list[n], list[k]) = (list[k], list[n]);
             }
         }
 
