@@ -50,7 +50,14 @@
 
 	<ItemGroup>
 		<Compile Include="MainMod.cs" />
-		<Compile Include="SmartEpisodeComparer.cs" />
+		<Compile Include="Utils\CustomTVState.cs" />
+		<Compile Include="Utils\Extensions.cs" />
+		<Compile Include="Utils\SmartEpisodeComparer.cs" />
+		<Compile Include="Utils\Video.cs" />
+		<Compile Include="Utils\YoutubeUtils\Playlist.cs" />
+		<Compile Include="Utils\YoutubeUtils\VideoHandlers.cs" />
+		<Compile Include="Utils\YoutubeUtils\Youtube.cs" />
+		<Compile Include="Utils\YoutubeUtils\UI.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

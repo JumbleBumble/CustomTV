@@ -1,6 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace CustomTV
+namespace CustomTV.Utils
 {
     public class SmartEpisodeComparer : IComparer<string>
     {
@@ -71,12 +71,12 @@ namespace CustomTV
                 {
                     if (pa.Length != pb.Length)
                         return pa.Length.CompareTo(pb.Length);
-                    int cmp = String.CompareOrdinal(pa, pb);
+                    int cmp = string.CompareOrdinal(pa, pb);
                     if (cmp != 0) return cmp;
                 }
                 else
                 {
-                    int cmp = String.Compare(pa, pb, StringComparison.OrdinalIgnoreCase);
+                    int cmp = string.Compare(pa, pb, StringComparison.OrdinalIgnoreCase);
                     if (cmp != 0) return cmp;
                 }
             }
