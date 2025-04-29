@@ -1,11 +1,14 @@
 ﻿using CustomTV.Utils.YoutubeUtils;
-using Il2CppScheduleOne.EntityFramework;
-using Il2CppScheduleOne.TV;
 using MelonLoader;
 using MelonLoader.Utils;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Video;
+#if MELONLOADER_IL2CPP
+using Il2CppScheduleOne.EntityFramework;
+#elif MELONLOADER_MONO
+using ScheduleOne.EntityFramework;
+#endif
 
 namespace CustomTV.Utils
 {
@@ -512,7 +515,7 @@ namespace CustomTV.Utils
             try
             {
                 vp.time = CustomTV.customTVState.SavedPlaybackTime;
-                if (makePlayer && !CustomTV.customTVState.WasPaused && !CustomTV.customTVState.WasPausedByTimescale || !makePlayer)
+                if (!CustomTV.customTVState.WasPaused && !CustomTV.customTVState.WasPausedByTimescale)
                 {
                     MelonLogger.Msg("Starting video playback");
                     vp.Play();
@@ -533,7 +536,7 @@ namespace CustomTV.Utils
             try
             {
                 vp.time = CustomTV.customTVState.SavedPlaybackTime;
-                if (makePlayer && !CustomTV.customTVState.WasPaused && !CustomTV.customTVState.WasPausedByTimescale || !makePlayer)
+                if (!CustomTV.customTVState.WasPaused && !CustomTV.customTVState.WasPausedByTimescale)
                 {
                     MelonLogger.Msg("Starting video playback");
                     vp.Play();

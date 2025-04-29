@@ -7,11 +7,6 @@ using CustomTV.Utils;
 using CustomTV;
 using CustomTV.Utils.YoutubeUtils;
 
-#if MELONLOADER_IL2CPP
-#else
-    using ScheduleOne.EntityFramework;
-#endif
-
 [assembly: MelonInfo(typeof(CustomTV.CustomTV), BuildInfo.Name, BuildInfo.Version, BuildInfo.Author, BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
 [assembly: MelonGame("TVGS", "Schedule I")]
@@ -175,8 +170,8 @@ namespace CustomTV
                 VideoHandlers.errorEventHandler = Il2CppInterop.Runtime.DelegateSupport.ConvertDelegate<VideoPlayer.ErrorEventHandler>(
                     new Action<VideoPlayer, string>(VideoHandlers.OnErrorReceived));
 #elif MELONLOADER_MONO
-                videoEndDelegate = new VideoPlayer.EventHandler(VideoEndEventHandler);
-                errorEventHandler = new VideoPlayer.ErrorEventHandler(OnErrorReceived);
+                VideoHandlers.videoEndDelegate = new VideoPlayer.EventHandler(VideoHandlers.VideoEndEventHandler);
+                VideoHandlers.errorEventHandler = new VideoPlayer.ErrorEventHandler(VideoHandlers.OnErrorReceived);
 #else
                 videoEndDelegate = new VideoPlayer.EventHandler(VideoEndEventHandler);
                 errorEventHandler = new VideoPlayer.ErrorEventHandler(OnErrorReceived);
@@ -217,6 +212,7 @@ namespace CustomTV
                             if (i != 0)
                             {
                                 customTVState.PassiveVideoPlayers[i].Pause();
+                                customTVState.PassiveVideoPlayers[i].time = customTVState.SavedPlaybackTime;
                             }
                         }
                     }
@@ -235,6 +231,7 @@ namespace CustomTV
                             if (i != 0)
                             {
                                 customTVState.PassiveVideoPlayers[i].Play();
+                                customTVState.PassiveVideoPlayers[i].time = customTVState.SavedPlaybackTime;
                             }
                         }
                     }
