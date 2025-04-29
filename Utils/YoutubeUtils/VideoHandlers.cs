@@ -88,8 +88,10 @@ namespace CustomTV.Utils.YoutubeUtils
         public static void OnVideoEnd(VideoPlayer vp)
         {
             MelonLogger.Msg("Video ended, checking for next video");
-
-            VideoHandlers.RemoveVideoEndHandler(vp);
+            if (CustomTV.customTVState.VideoFiles.Count > 1)
+            {
+                VideoHandlers.RemoveVideoEndHandler(vp);
+            }
 
             if (CustomTV.customTVState.PlaylistVideoQueue.Count > 0)
             {
@@ -111,22 +113,18 @@ namespace CustomTV.Utils.YoutubeUtils
                 return;
             }
 
-            if (CustomTV.customTVState.VideoFiles.Count <= 1)
+            MelonLogger.Msg("No playlist videos, proceeding with regular playback");
+            if (Config.Shuffle)
             {
-                VideoHandlers.AddVideoEndHandler(vp);
-                MelonLogger.Msg("Single video will loop - added event handler back");
-                return;
+                int newIndex;
+                do
+                {
+                    newIndex = CustomTV.customTVState.Rng.Next(CustomTV.customTVState.VideoFiles.Count);
+                } while (CustomTV.customTVState.VideoFiles.Count > 1 && newIndex == CustomTV.customTVState.CurrentVideoIndex);
+                CustomTV.customTVState.CurrentVideoIndex = newIndex;
+                CustomTV.customTVState.VideoFilePath = CustomTV.customTVState.VideoFiles[CustomTV.customTVState.CurrentVideoIndex];
             }
 
-            MelonLogger.Msg("No playlist videos, proceeding with regular random playback");
-            int newIndex;
-            do
-            {
-                newIndex = CustomTV.customTVState.Rng.Next(CustomTV.customTVState.VideoFiles.Count);
-            } while (CustomTV.customTVState.VideoFiles.Count > 1 && newIndex == CustomTV.customTVState.CurrentVideoIndex);
-
-            CustomTV.customTVState.CurrentVideoIndex = newIndex;
-            CustomTV.customTVState.VideoFilePath = CustomTV.customTVState.VideoFiles[CustomTV.customTVState.CurrentVideoIndex];
             if (CustomTV.customTVState.SavedPlaybackTime > 0.2) CustomTV.customTVState.SavedPlaybackTime = 0;
             MelonCoroutines.Start(Video.SetupVideoPlayer());
         }

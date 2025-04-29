@@ -1,5 +1,6 @@
 ﻿using CustomTV.Utils.YoutubeUtils;
 using Il2CppScheduleOne.EntityFramework;
+using Il2CppScheduleOne.TV;
 using MelonLoader;
 using MelonLoader.Utils;
 using System.Collections;
@@ -37,7 +38,6 @@ namespace CustomTV.Utils
                     CustomTV.customTVState.SettingUpdate = false;
                     yield break;
                 }
-
                 if (!CustomTV.customTVState.WasPausedByTimescale && !CustomTV.customTVState.WasPaused && vp.isPlaying)
                 {
                     double currentTime = vp.time;
@@ -45,6 +45,10 @@ namespace CustomTV.Utils
                     if (currentTime > 0.1 || videoLength > 0 && (currentTime >= videoLength - 0.5 || CustomTV.customTVState.SavedPlaybackTime >= videoLength - 0.5))
                     {
                         CustomTV.customTVState.SavedPlaybackTime = currentTime;
+                    }
+                    else if (currentTime < 0.1 && CustomTV.customTVState.SavedPlaybackTime > 0 && CustomTV.customTVState.SavedPlaybackTime < videoLength - 0.5 && vp.time != CustomTV.customTVState.SavedPlaybackTime)
+                    {
+                        vp.time = CustomTV.customTVState.SavedPlaybackTime;
                     }
                 }
 
@@ -74,15 +78,18 @@ namespace CustomTV.Utils
                     }
                 }
 
+                bool needsFullUpdate = false;
+                bool inactiveMaster = false;
                 for (int i = 0; i < CustomTV.customTVState.TVInterfaces.Count; i++)
                 {
                     var tvInterface = CustomTV.customTVState.TVInterfaces[i];
                     if (tvInterface == null) continue;
-                    var timeChild = CustomTV.customTVState.TVInterfaces[i].Find("Time") ?? CustomTV.customTVState.TVInterfaces[i].Find("Model")?.Find("Name");
+                    Transform timeChild = tvInterface.Find("Time") ?? tvInterface.Find("Model")?.Find("Name") ?? CustomTV.customTVState.PassiveVideoPlayers.Find(x => x.transform?.parent == tvInterface || x.transform?.parent?.parent == tvInterface)?.transform;
                     if (timeChild == null) continue;
                     bool needsUpdate = false;
-                    var renderer = timeChild.GetComponent<MeshRenderer>();
-                    if (renderer == null || renderer.material == null)
+                    MeshRenderer renderer = timeChild.GetComponent<MeshRenderer>();
+                    VideoPlayer videoPlayer = timeChild.GetComponent<VideoPlayer>();
+                    if (renderer == null || videoPlayer == null || renderer.material == null)
                     {
                         needsUpdate = true;
                     }
@@ -90,12 +97,46 @@ namespace CustomTV.Utils
                     {
                         Material mat = renderer.material;
                         needsUpdate = mat.shader == null || mat.shader.name != "UI/Default" || mat.mainTexture != CustomTV.customTVState.SharedRenderTexture;
+                        if (!timeChild.gameObject.activeInHierarchy || !videoPlayer.isPrepared) needsUpdate = false;
+                        if (timeChild.gameObject.activeInHierarchy && CustomTV.customTVState.WillNeedUpdate.Contains(timeChild))
+                        {
+                            needsUpdate = true;
+                            CustomTV.customTVState.WillNeedUpdate.Remove(timeChild);
+                            if (inactiveMaster && !needsFullUpdate)
+                            {
+                                needsFullUpdate = true;
+                            }
+                        }
+                        if (!timeChild.gameObject.activeInHierarchy && !CustomTV.customTVState.WillNeedUpdate.Contains(timeChild))
+                        {
+                            CustomTV.customTVState.WillNeedUpdate.Add(timeChild);
+                            if (i == 0 && CustomTV.customTVState.TVInterfaces.Count > 1)
+                            {
+                                needsFullUpdate = true;
+                                break;
+                            }
+                        }
+                        else if (!timeChild.gameObject.activeInHierarchy && i == 0 && CustomTV.customTVState.TVInterfaces.Count > 1)
+                        {
+                            inactiveMaster = true;
+                        }
                     }
 
-                    if (needsUpdate)
+                    if (!needsFullUpdate && needsUpdate && !CustomTV.customTVState.UpdatingVideoPlayers.Contains(timeChild))
                     {
+                        CustomTV.customTVState.UpdatingVideoPlayers.Add(timeChild);
                         MelonCoroutines.Start(SetupPassiveDisplay(timeChild, i == 0));
                     }
+                }
+
+                if ((needsFullUpdate || CustomTV.customTVState.waitToUpdate) && !CustomTV.customTVState.SettingUp)
+                {
+                    CustomTV.customTVState.waitToUpdate = false;
+                    MelonCoroutines.Start(SetupVideoPlayer(false, false, CustomTV.customTVState.VideoFilePath, true));
+                }
+                else if (needsFullUpdate && CustomTV.customTVState.SettingUp)
+                {
+                    CustomTV.customTVState.waitToUpdate = true;
                 }
             }
             catch { }
@@ -103,7 +144,7 @@ namespace CustomTV.Utils
 
         }
 
-        public static IEnumerator SetupVideoPlayer(bool first = false, bool forward = true, string directVideoPath = null)
+        public static IEnumerator SetupVideoPlayer(bool first = false, bool forward = true, string directVideoPath = null, bool reset = false)
         {
             if (CustomTV.customTVState.SettingUp) yield break;
             CustomTV.customTVState.SettingUp = true;
@@ -113,13 +154,20 @@ namespace CustomTV.Utils
             CustomTV.customTVState.TVInterfaces.Clear();
             CustomTV.customTVState.PassiveVideoPlayers.Clear();
             CustomTV.customTVState.TVInterfaces = [.. UnityEngine.Object.FindObjectsOfType<Transform>()
-               .Where(t => t.name == "TVInterface" || t.name == "MetalSign_Built(Clone)" || t.name == "WoodlSign_Built(Clone)")
-               .Where(t =>
-               {
-                   if (t.name == "TVInterface") return true;
-                   var labelledSurfaceItem = t.GetComponent<LabelledSurfaceItem>();
-                   return labelledSurfaceItem != null && labelledSurfaceItem.Message?.ToLower() == "customtv";
-               })];
+                .Where(t => t.name == "TVInterface" || t.name == "MetalSign_Built(Clone)" || t.name == "WoodlSign_Built(Clone)")
+                .Where(t =>
+                {
+                    if (t.name == "TVInterface") return true;
+                    var labelledSurfaceItem = t.GetComponent<LabelledSurfaceItem>();
+                    return labelledSurfaceItem != null && (labelledSurfaceItem.Message?.ToLower().Contains("customtv") ?? false);
+                })
+                .OrderByDescending(t =>
+                {
+                    if (t.name == "TVInterface") return 2;
+                    bool? modelActive = t.Find("Model")?.gameObject.activeInHierarchy;
+                    return (modelActive ?? false) ? 1 : 0;
+                })
+            ];
 
             CustomTV.customTVState.SharedRenderTexture = new RenderTexture(1920, 1080, 0);
 
@@ -147,7 +195,7 @@ namespace CustomTV.Utils
 
                 if (CustomTV.customTVState.PlaylistVideoQueue.Count == 0)
                 {
-                    if (newVideoFiles.Count != CustomTV.customTVState.VideoFiles.Count)
+                    if (newVideoFiles.Count != CustomTV.customTVState.VideoFiles.Count && !reset)
                     {
                         CustomTV.customTVState.VideoFiles = newVideoFiles;
                         if (Config.Shuffle)
@@ -161,37 +209,59 @@ namespace CustomTV.Utils
                     }
                 }
 
-                if (CustomTV.customTVState.PlaylistVideoQueue.Count > 0)
+                if (!reset)
                 {
-                    lock (CustomTV.customTVState.PlaylistVideoQueue)
+                    if (CustomTV.customTVState.PlaylistVideoQueue.Count > 0)
                     {
-                        videoToPlay = CustomTV.customTVState.PlaylistVideoQueue.Dequeue();
+                        lock (CustomTV.customTVState.PlaylistVideoQueue)
+                        {
+                            videoToPlay = CustomTV.customTVState.PlaylistVideoQueue.Dequeue();
+                        }
+                    }
+                    else
+                    {
+                        int newIndex = first ? 0 : forward ? (CustomTV.customTVState.CurrentVideoIndex + 1) % CustomTV.customTVState.VideoFiles.Count : (CustomTV.customTVState.CurrentVideoIndex - 1 + CustomTV.customTVState.VideoFiles.Count) % CustomTV.customTVState.VideoFiles.Count;
+                        CustomTV.customTVState.CurrentVideoIndex = newIndex;
+                        videoToPlay = CustomTV.customTVState.VideoFiles[CustomTV.customTVState.CurrentVideoIndex];
                     }
                 }
                 else
                 {
-                    int newIndex = first ? 0 : forward ? (CustomTV.customTVState.CurrentVideoIndex + 1) % CustomTV.customTVState.VideoFiles.Count : (CustomTV.customTVState.CurrentVideoIndex - 1 + CustomTV.customTVState.VideoFiles.Count) % CustomTV.customTVState.VideoFiles.Count;
-                    CustomTV.customTVState.CurrentVideoIndex = newIndex;
                     videoToPlay = CustomTV.customTVState.VideoFiles[CustomTV.customTVState.CurrentVideoIndex];
                 }
             }
 
             CustomTV.customTVState.VideoFilePath = videoToPlay;
 
+            if (CustomTV.customTVState.TVInterfaces.Count > 1 && CustomTV.customTVState.TVInterfaces[0])
+            {
+                Transform master = CustomTV.customTVState.TVInterfaces[0];
+                Transform timeChild = CustomTV.customTVState.TVInterfaces[0].Find("Time") ?? CustomTV.customTVState.TVInterfaces[0].Find("Model")?.Find("Name");
+                if (timeChild == null || !timeChild.gameObject.activeInHierarchy)
+                {
+                    CustomTV.customTVState.TVInterfaces.RemoveAt(0);
+                    CustomTV.customTVState.TVInterfaces.Add(master);
+                    MelonLogger.Msg("Swapped Master in failsafe");
+                }
+            }
+            int activeCount = 0;
             for (int i = 0; i < CustomTV.customTVState.TVInterfaces.Count; i++)
             {
                 bool isMaster = i == 0;
                 if (CustomTV.customTVState.TVInterfaces[i] == null) continue;
-                var timeChild = CustomTV.customTVState.TVInterfaces[i].Find("Time") ?? CustomTV.customTVState.TVInterfaces[i].Find("Model")?.Find("Name");
+                Transform timeChild = CustomTV.customTVState.TVInterfaces[i].Find("Time") ?? CustomTV.customTVState.TVInterfaces[i].Find("Model")?.Find("Name");
+                if (timeChild == null || (!isMaster && !timeChild.gameObject.activeInHierarchy)) continue;
+                activeCount++;
+                CustomTV.customTVState.UpdatingVideoPlayers.Add(timeChild);
                 MelonCoroutines.Start(SetupPassiveDisplay(timeChild, isMaster));
             }
 
             float timeoutStart = Time.time;
-            while (CustomTV.customTVState.PassiveVideoPlayers.Count != CustomTV.customTVState.TVInterfaces.Count)
+            while (CustomTV.customTVState.PassiveVideoPlayers.Count != activeCount)
             {
                 if (Time.time - timeoutStart > 15f)
                 {
-                    MelonLogger.Warning($"Timeout waiting for video players to be set up. Expected {CustomTV.customTVState.TVInterfaces.Count}, got {CustomTV.customTVState.PassiveVideoPlayers.Count}");
+                    MelonLogger.Warning($"Timeout waiting for video players to be set up. Expected {activeCount}, got {CustomTV.customTVState.PassiveVideoPlayers.Count}");
                     break;
                 }
                 yield return null;
@@ -259,34 +329,23 @@ namespace CustomTV.Utils
             try
             {
                 vp = timeChild.GetComponent<VideoPlayer>();
-                if (vp == null)
+                if (vp)
                 {
-                    MelonLogger.Msg("Creating new VideoPlayer component");
-                    vp = timeChild.gameObject.AddComponent<VideoPlayer>();
+                    CustomTV.customTVState.PassiveVideoPlayers.Remove(vp);
+                    UnityEngine.Object.Destroy(vp);
                 }
-                else
-                {
-                    MelonLogger.Msg("Using existing VideoPlayer component");
-                    VideoHandlers.RemoveVideoEndHandler(vp);
-                    VideoHandlers.RemoveErrorHandler(vp);
-                    vp.Stop();
-                }
+                MelonLogger.Msg("Creating new VideoPlayer component");
+                vp = timeChild.gameObject.AddComponent<VideoPlayer>();
 
-                if (makePlayer)
-                {
-                    VideoHandlers.RemoveVideoEndHandler(vp);
-                }
 
                 audioSrc = timeChild.GetComponent<AudioSource>();
-                if (audioSrc == null)
+                if (audioSrc)
                 {
-                    MelonLogger.Msg("Creating new AudioSource component");
-                    audioSrc = timeChild.gameObject.AddComponent<AudioSource>();
+                    UnityEngine.Object.Destroy(audioSrc);
                 }
-                else
-                {
-                    MelonLogger.Msg("Using existing AudioSource component");
-                }
+
+                MelonLogger.Msg("Creating new AudioSource component");
+                audioSrc = timeChild.gameObject.AddComponent<AudioSource>();
             }
             catch (Exception ex)
             {
@@ -350,6 +409,7 @@ namespace CustomTV.Utils
                 {
                     vp.renderMode = VideoRenderMode.APIOnly;
                 }
+
                 CustomTV.customTVState.PassiveVideoPlayers.Add(vp);
                 MelonLogger.Msg($"Added video player to passiveVideoPlayers collection (total: {CustomTV.customTVState.PassiveVideoPlayers.Count})");
                 MelonLogger.Msg($"Trying to prepare video with plain path: {vp.url}");
@@ -443,11 +503,12 @@ namespace CustomTV.Utils
                 else
                 {
                     MelonLogger.Error(timeoutErrorMsg);
+                    CustomTV.customTVState.UpdatingVideoPlayers.Remove(timeChild);
                     yield break;
                 }
             }
-            yield return null;
-
+            vp.Pause();
+            yield return new WaitForSeconds(0.5f);
             try
             {
                 vp.time = CustomTV.customTVState.SavedPlaybackTime;
@@ -456,7 +517,6 @@ namespace CustomTV.Utils
                     MelonLogger.Msg("Starting video playback");
                     vp.Play();
                 }
-                vp.time = CustomTV.customTVState.SavedPlaybackTime;
                 if (makePlayer)
                 {
                     VideoHandlers.AddVideoEndHandler(vp);
@@ -468,6 +528,20 @@ namespace CustomTV.Utils
                 MelonLogger.Error($"Error starting video playback: {ex.Message}");
                 MelonLogger.Error(ex.StackTrace);
             }
+            yield return new WaitForSeconds(0.6f);
+            vp.Pause();
+            try
+            {
+                vp.time = CustomTV.customTVState.SavedPlaybackTime;
+                if (makePlayer && !CustomTV.customTVState.WasPaused && !CustomTV.customTVState.WasPausedByTimescale || !makePlayer)
+                {
+                    MelonLogger.Msg("Starting video playback");
+                    vp.Play();
+                }
+                vp.time = CustomTV.customTVState.SavedPlaybackTime;
+            }
+            catch { }
+            CustomTV.customTVState.UpdatingVideoPlayers.Remove(timeChild);
         }
 
         private static Mesh CreateQuadMesh()

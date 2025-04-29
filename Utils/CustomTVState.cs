@@ -30,6 +30,9 @@ namespace CustomTV.Utils
         public Queue<string> PlaylistVideoQueue { get; set; }
         public bool IsProcessingPlaylist { get; set; }
         public bool WarnedAboutCookies { get; set; }
+        public HashSet<Transform> UpdatingVideoPlayers { get; set; }
+        public HashSet<Transform> WillNeedUpdate { get; set; }
+        public bool waitToUpdate { get; set; }
 
         public CustomTVState()
         {
@@ -42,6 +45,8 @@ namespace CustomTV.Utils
             PlaylistVideoQueue = new Queue<string>();
             DownloadLock = new object();
             Rng = new System.Random();
+            UpdatingVideoPlayers = [];
+            WillNeedUpdate = [];
         }
     }
 
